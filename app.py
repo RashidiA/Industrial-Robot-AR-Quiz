@@ -6,7 +6,6 @@ st.set_page_config(page_title="AR Hand Gesture Matching Quiz", layout="wide")
 st.title("🧩 Interactive AR Matching Quiz")
 st.caption("Edge-Computed Hand Tracking via WebAssembly & MediaPipe")
 
-# Full HTML/CSS/JS Application with Edge Computing
 html_code = """
 <!DOCTYPE html>
 <html>
@@ -31,10 +30,10 @@ html_code = """
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     }
     video {
-      transform: scaleX(-1);
       display: none;
     }
-    canvas {
+    /* Mirror both video and canvas rendering together seamlessly */
+    #canvas {
       position: absolute;
       top: 0;
       left: 0;
@@ -116,7 +115,6 @@ html_code = """
   let offsetX = 0, offsetY = 0;
 
   const answers = Array.from(document.querySelectorAll('.answer'));
-  const questions = Array.from(document.querySelectorAll('.question'));
 
   function getDistance(p1, p2) {
     return Math.hypot((p1.x - p2.x) * 1000, (p1.y - p2.y) * 550);
@@ -133,43 +131,46 @@ html_code = """
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     
-    // Draw Webcam Stream on Canvas
+    // Render video frame on canvas
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
       const landmarks = results.multiHandLandmarks[0];
       
-      // Landmark Mapping
       const thumbTip = landmarks[4];     // Thumb Tip
       const indexTip = landmarks[8];     // Index Finger Tip
-      const palmCenter = landmarks[9];   // Middle Finger MCP (Palm Center)
+      const palmCenter = landmarks[9];   // Palm Center (Middle MCP)
 
-      // Convert coordinates (mirrored X coordinate calculation)
-      const palmX = (1 - palmCenter.x) * 1000;
+      // Direct coordinate calculation (Matching canvas native coordinates)
+      const palmX = palmCenter.x * 1000;
       const palmY = palmCenter.y * 550;
 
-      const cursorX = (1 - indexTip.x) * 1000;
+      const cursorX = indexTip.x * 1000;
       const cursorY = indexTip.y * 550;
 
-      // 1. Red Marker fixed at Center of Palm (Landmark 9)
+      // Un-mirrored screen coordinates for DOM Box element detection
+      const screenCursorX = (1 - indexTip.x) * 1000;
+      const screenCursorY = indexTip.y * 550;
+
+      // 1. Red Marker fixed at Center of Palm
       canvasCtx.fillStyle = '#ff0055';
       canvasCtx.beginPath();
       canvasCtx.arc(palmX, palmY, 14, 0, 2 * Math.PI);
       canvasCtx.fill();
 
-      // Measure Pinch Distance (Index Tip to Thumb Tip)
+      // Increased Pinch Distance threshold for easier picking
       const pinchDistance = getDistance(indexTip, thumbTip);
-      const isPinching = pinchDistance < 42;
+      const isPinching = pinchDistance < 65; 
 
-      // 2. Interactive Cursor at Finger Tip (Landmark 8)
+      // 2. Interactive Cursor at Index Fingertip
       canvasCtx.fillStyle = isPinching ? '#00ff00' : '#00b4d8';
       canvasCtx.beginPath();
-      canvasCtx.arc(cursorX, cursorY, 10, 0, 2 * Math.PI);
+      canvasCtx.arc(cursorX, cursorY, 12, 0, 2 * Math.PI);
       canvasCtx.fill();
 
       if (isPinching) {
         if (!draggedCard) {
-          // Detect answer box under index fingertip
+          // Check box collision with screen-mapped cursor coordinates
           answers.forEach(card => {
             if (!card.classList.contains('matched')) {
               const rect = card.getBoundingClientRect();
@@ -177,23 +178,23 @@ html_code = """
               const cardX = rect.left - containerRect.left;
               const cardY = rect.top - containerRect.top;
 
-              if (cursorX >= cardX && cursorX <= cardX + rect.width &&
-                  cursorY >= cardY && cursorY <= cardY + rect.height) {
+              if (screenCursorX >= cardX && screenCursorX <= cardX + rect.width &&
+                  screenCursorY >= cardY && screenCursorY <= cardY + rect.height) {
                 draggedCard = card;
-                offsetX = cursorX - cardX;
-                offsetY = cursorY - cardY;
+                offsetX = screenCursorX - cardX;
+                offsetY = screenCursorY - cardY;
               }
             }
           });
         } else {
-          // Move selected card relative to fingertip movement
-          let newX = cursorX - offsetX;
-          let newY = cursorY - offsetY;
+          // Drag card tracking index finger movement
+          let newX = screenCursorX - offsetX;
+          let newY = screenCursorY - offsetY;
           draggedCard.style.left = `${newX}px`;
           draggedCard.style.top = `${newY}px`;
         }
       } else {
-        // Drop Card on Pinch Release
+        // Drop card & check match
         if (draggedCard) {
           const targetId = draggedCard.getAttribute('data-match');
           const targetQuestion = document.getElementById(targetId);
@@ -202,11 +203,11 @@ html_code = """
           const targetRect = targetQuestion.getBoundingClientRect();
 
           if (checkOverlap(dragRect, targetRect)) {
-            // Mark Correct: Both change to Green
+            // Correct match: Change color to Green
             draggedCard.classList.add('matched');
             targetQuestion.classList.add('matched');
             
-            // Snap Answer Card directly over Question Card
+            // Align answer over question
             const containerRect = document.getElementById('container').getBoundingClientRect();
             draggedCard.style.left = `${targetRect.left - containerRect.left}px`;
             draggedCard.style.top = `${targetRect.top - containerRect.top}px`;
@@ -246,5 +247,4 @@ html_code = """
 </html>
 """
 
-# Render Component
 components.html(html_code, height=570, width=1020)
