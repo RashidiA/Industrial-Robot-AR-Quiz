@@ -6,25 +6,7 @@ st.set_page_config(page_title="AR Hand Gesture Matching Quiz", layout="wide")
 st.title("🧩 Interactive AR Matching Quiz")
 st.caption("Edge-Computed Hand Tracking via WebAssembly & MediaPipe")
 
-# Definition of quiz items
-quiz_data = [
-    {
-        "id": "q1",
-        "question": "How many Axes in industrial robot ?",
-        "answer": "6 Axes",
-        "q_y": 120,
-        "a_y": 120
-    },
-    {
-        "id": "q2",
-        "question": "How do you control an industrial robot ?",
-        "answer": "Using robot controller",
-        "q_y": 280,
-        "a_y": 280
-    }
-]
-
-# Client-Side HTML/JS Edge Processing Component
+# Full HTML/CSS/JS Application with Edge Computing
 html_code = """
 <!DOCTYPE html>
 <html>
@@ -32,48 +14,96 @@ html_code = """
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <style>
-    body { margin: 0; padding: 0; background-color: #000; overflow: hidden; font-family: Arial, sans-serif; }
-    #container { position: relative; width: 1000px; height: 500px; margin: 0 auto; }
-    video { transform: scaleX(-1); display: none; }
-    canvas { position: absolute; top: 0; left: 0; transform: scaleX(-1); }
-    #overlay { position: absolute; top: 0; left: 0; width: 1000px; height: 500px; pointer-events: none; }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0d1117;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    #container {
+      position: relative;
+      width: 1000px;
+      height: 550px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+    video {
+      transform: scaleX(-1);
+      display: none;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: scaleX(-1);
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1000px;
+      height: 550px;
+      pointer-events: none;
+    }
     
     .card {
       position: absolute;
-      width: 320px;
+      width: 340px;
       height: 90px;
-      border-radius: 8px;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       text-align: center;
       font-size: 18px;
       font-weight: bold;
-      color: #fff;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-      transition: background-color 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
       box-sizing: border-box;
-      padding: 10px;
+      padding: 15px;
+      user-select: none;
     }
     
-    .question { background-color: #4a90e2; border: 2px solid #2e6bba; left: 80px; }
-    .answer { background-color: #f5a623; border: 2px solid #d48806; left: 580px; cursor: pointer; color: #000; }
-    .matched { background-color: #2ec4b6 !important; border-color: #1b9aaa !important; color: #fff !important; }
+    /* Blue Question Boxes */
+    .question {
+      background-color: #4a90e2;
+      border: 3px solid #2e6bba;
+      color: #ffffff;
+      left: 60px;
+    }
+    
+    /* Yellow Answer Boxes */
+    .answer {
+      background-color: #f5a623;
+      border: 3px solid #d48806;
+      color: #000000;
+      left: 580px;
+    }
+    
+    /* Green Match State */
+    .matched {
+      background-color: #2ec4b6 !important;
+      border-color: #1b9aaa !important;
+      color: #ffffff !important;
+    }
   </style>
 </head>
 <body>
 
 <div id="container">
   <video id="webcam" playsinline></video>
-  <canvas id="canvas" width="1000" height="500"></canvas>
+  <canvas id="canvas" width="1000" height="550"></canvas>
   <div id="overlay">
-    <!-- Questions -->
+    <!-- Questions (Blue Boxes) -->
     <div id="q1" class="card question" style="top: 100px;">How many Axes in industrial robot ?</div>
-    <div id="q2" class="card question" style="top: 260px;">How do you control an industrial robot ?</div>
+    <div id="q2" class="card question" style="top: 300px;">How do you control an industrial robot ?</div>
     
-    <!-- Answers -->
+    <!-- Answers (Yellow Boxes) -->
     <div id="a1" class="card answer" style="top: 100px;" data-match="q1">6 Axes</div>
-    <div id="a2" class="card answer" style="top: 260px;" data-match="q2">Using robot controller</div>
+    <div id="a2" class="card answer" style="top: 300px;" data-match="q2">Using robot controller</div>
   </div>
 </div>
 
@@ -89,7 +119,7 @@ html_code = """
   const questions = Array.from(document.querySelectorAll('.question'));
 
   function getDistance(p1, p2) {
-    return Math.hypot((p1.x - p2.x) * 1000, (p1.y - p2.y) * 500);
+    return Math.hypot((p1.x - p2.x) * 1000, (p1.y - p2.y) * 550);
   }
 
   function checkOverlap(rect1, rect2) {
@@ -103,36 +133,43 @@ html_code = """
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     
-    // Render local webcam frame (AR View)
+    // Draw Webcam Stream on Canvas
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
       const landmarks = results.multiHandLandmarks[0];
       
-      // Index Tip (8) and Thumb Tip (4)
-      const indexTip = landmarks[8];
-      const thumbTip = landmarks[4];
+      // Landmark Mapping
+      const thumbTip = landmarks[4];     // Thumb Tip
+      const indexTip = landmarks[8];     // Index Finger Tip
+      const palmCenter = landmarks[9];   // Middle Finger MCP (Palm Center)
 
-      // Mirror X coordinates to match canvas mirroring
+      // Convert coordinates (mirrored X coordinate calculation)
+      const palmX = (1 - palmCenter.x) * 1000;
+      const palmY = palmCenter.y * 550;
+
       const cursorX = (1 - indexTip.x) * 1000;
-      const cursorY = indexTip.y * 500;
+      const cursorY = indexTip.y * 550;
 
-      // Draw Cursor Indicator
+      // 1. Red Marker fixed at Center of Palm (Landmark 9)
       canvasCtx.fillStyle = '#ff0055';
       canvasCtx.beginPath();
-      canvasCtx.arc(cursorX, cursorY, 12, 0, 2 * Math.PI);
+      canvasCtx.arc(palmX, palmY, 14, 0, 2 * Math.PI);
       canvasCtx.fill();
 
+      // Measure Pinch Distance (Index Tip to Thumb Tip)
       const pinchDistance = getDistance(indexTip, thumbTip);
-      const isPinching = pinchDistance < 45;
+      const isPinching = pinchDistance < 42;
+
+      // 2. Interactive Cursor at Finger Tip (Landmark 8)
+      canvasCtx.fillStyle = isPinching ? '#00ff00' : '#00b4d8';
+      canvasCtx.beginPath();
+      canvasCtx.arc(cursorX, cursorY, 10, 0, 2 * Math.PI);
+      canvasCtx.fill();
 
       if (isPinching) {
-        canvasCtx.strokeStyle = '#00ff00';
-        canvasCtx.lineWidth = 4;
-        canvasCtx.stroke();
-
         if (!draggedCard) {
-          // Check if pinch is over an unmatched answer card
+          // Detect answer box under index fingertip
           answers.forEach(card => {
             if (!card.classList.contains('matched')) {
               const rect = card.getBoundingClientRect();
@@ -149,14 +186,14 @@ html_code = """
             }
           });
         } else {
-          // Move dragged card relative to pinched cursor
+          // Move selected card relative to fingertip movement
           let newX = cursorX - offsetX;
           let newY = cursorY - offsetY;
           draggedCard.style.left = `${newX}px`;
           draggedCard.style.top = `${newY}px`;
         }
       } else {
-        // Pinch released -> Drop card & evaluate match
+        // Drop Card on Pinch Release
         if (draggedCard) {
           const targetId = draggedCard.getAttribute('data-match');
           const targetQuestion = document.getElementById(targetId);
@@ -165,11 +202,11 @@ html_code = """
           const targetRect = targetQuestion.getBoundingClientRect();
 
           if (checkOverlap(dragRect, targetRect)) {
-            // Correct match sequence
+            // Mark Correct: Both change to Green
             draggedCard.classList.add('matched');
             targetQuestion.classList.add('matched');
             
-            // Snap position to question box
+            // Snap Answer Card directly over Question Card
             const containerRect = document.getElementById('container').getBoundingClientRect();
             draggedCard.style.left = `${targetRect.left - containerRect.left}px`;
             draggedCard.style.top = `${targetRect.top - containerRect.top}px`;
@@ -199,7 +236,7 @@ html_code = """
       await hands.send({image: videoElement});
     },
     width: 1000,
-    height: 500
+    height: 550
   });
 
   camera.start();
@@ -209,4 +246,5 @@ html_code = """
 </html>
 """
 
-components.html(html_code, height=520, width=1020)
+# Render Component
+components.html(html_code, height=570, width=1020)
