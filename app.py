@@ -32,7 +32,6 @@ html_code = """
     video {
       display: none;
     }
-    /* Mirror both video and canvas rendering together seamlessly */
     #canvas {
       position: absolute;
       top: 0;
@@ -46,6 +45,46 @@ html_code = """
       width: 1000px;
       height: 550px;
       pointer-events: none;
+    }
+    
+    /* Top Banner Notification */
+    #feedback-banner {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(46, 196, 182, 0.95);
+      color: #ffffff;
+      padding: 10px 25px;
+      border-radius: 20px;
+      font-size: 20px;
+      font-weight: bold;
+      display: none;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      z-index: 10;
+      transition: opacity 0.3s ease;
+    }
+
+    /* Reset Button */
+    #reset-btn {
+      position: absolute;
+      bottom: 15px;
+      right: 20px;
+      background-color: #e63946;
+      color: #ffffff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      pointer-events: auto;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      transition: background-color 0.2s ease;
+      z-index: 10;
+    }
+    #reset-btn:hover {
+      background-color: #c1121f;
     }
     
     .card {
@@ -96,13 +135,16 @@ html_code = """
   <video id="webcam" playsinline></video>
   <canvas id="canvas" width="1000" height="550"></canvas>
   <div id="overlay">
+    <div id="feedback-banner">You are correct !!</div>
+    <button id="reset-btn" onclick="resetQuiz()">Reset</button>
+
     <!-- Questions (Blue Boxes) -->
     <div id="q1" class="card question" style="top: 100px;">How many Axes in industrial robot ?</div>
     <div id="q2" class="card question" style="top: 300px;">How do you control an industrial robot ?</div>
     
     <!-- Answers (Yellow Boxes) -->
-    <div id="a1" class="card answer" style="top: 100px;" data-match="q1">6 Axes</div>
-    <div id="a2" class="card answer" style="top: 300px;" data-match="q2">Using robot controller</div>
+    <div id="a1" class="card answer" style="top: 100px;" data-match="q1" data-initial-top="100px" data-initial-left="580px">6 Axes</div>
+    <div id="a2" class="card answer" style="top: 300px;" data-match="q2" data-initial-top="300px" data-initial-left="580px">Using robot controller</div>
   </div>
 </div>
 
@@ -110,9 +152,11 @@ html_code = """
   const videoElement = document.getElementById('webcam');
   const canvasElement = document.getElementById('canvas');
   const canvasCtx = canvasElement.getContext('2d');
+  const feedbackBanner = document.getElementById('feedback-banner');
   
   let draggedCard = null;
   let offsetX = 0, offsetY = 0;
+  let bannerTimeout = null;
 
   const answers = Array.from(document.querySelectorAll('.answer'));
 
@@ -127,38 +171,56 @@ html_code = """
              rect1.top > rect2.bottom);
   }
 
+  function showCorrectBanner() {
+    feedbackBanner.style.display = 'block';
+    if (bannerTimeout) clearTimeout(bannerTimeout);
+    bannerTimeout = setTimeout(() => {
+      feedbackBanner.style.display = 'none';
+    }, 2500);
+  }
+
+  function resetQuiz() {
+    answers.forEach(card => {
+      const targetId = card.getAttribute('data-match');
+      const targetQuestion = document.getElementById(targetId);
+      
+      card.classList.remove('matched');
+      targetQuestion.classList.remove('matched');
+      
+      card.style.top = card.getAttribute('data-initial-top');
+      card.style.left = card.getAttribute('data-initial-left');
+    });
+    feedbackBanner.style.display = 'none';
+  }
+
   function onResults(results) {
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     
-    // Render video frame on canvas
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
       const landmarks = results.multiHandLandmarks[0];
       
-      const thumbTip = landmarks[4];     // Thumb Tip
-      const indexTip = landmarks[8];     // Index Finger Tip
-      const palmCenter = landmarks[9];   // Palm Center (Middle MCP)
+      const thumbTip = landmarks[4];
+      const indexTip = landmarks[8];
+      const palmCenter = landmarks[9];
 
-      // Direct coordinate calculation (Matching canvas native coordinates)
       const palmX = palmCenter.x * 1000;
       const palmY = palmCenter.y * 550;
 
       const cursorX = indexTip.x * 1000;
       const cursorY = indexTip.y * 550;
 
-      // Un-mirrored screen coordinates for DOM Box element detection
       const screenCursorX = (1 - indexTip.x) * 1000;
       const screenCursorY = indexTip.y * 550;
 
-      // 1. Red Marker fixed at Center of Palm
+      // 1. Red Marker fixed at Palm Center
       canvasCtx.fillStyle = '#ff0055';
       canvasCtx.beginPath();
       canvasCtx.arc(palmX, palmY, 14, 0, 2 * Math.PI);
       canvasCtx.fill();
 
-      // Increased Pinch Distance threshold for easier picking
       const pinchDistance = getDistance(indexTip, thumbTip);
       const isPinching = pinchDistance < 65; 
 
@@ -170,7 +232,6 @@ html_code = """
 
       if (isPinching) {
         if (!draggedCard) {
-          // Check box collision with screen-mapped cursor coordinates
           answers.forEach(card => {
             if (!card.classList.contains('matched')) {
               const rect = card.getBoundingClientRect();
@@ -187,14 +248,12 @@ html_code = """
             }
           });
         } else {
-          // Drag card tracking index finger movement
           let newX = screenCursorX - offsetX;
           let newY = screenCursorY - offsetY;
           draggedCard.style.left = `${newX}px`;
           draggedCard.style.top = `${newY}px`;
         }
       } else {
-        // Drop card & check match
         if (draggedCard) {
           const targetId = draggedCard.getAttribute('data-match');
           const targetQuestion = document.getElementById(targetId);
@@ -203,7 +262,7 @@ html_code = """
           const targetRect = targetQuestion.getBoundingClientRect();
 
           if (checkOverlap(dragRect, targetRect)) {
-            // Correct match: Change color to Green
+            // Correct match
             draggedCard.classList.add('matched');
             targetQuestion.classList.add('matched');
             
@@ -211,6 +270,9 @@ html_code = """
             const containerRect = document.getElementById('container').getBoundingClientRect();
             draggedCard.style.left = `${targetRect.left - containerRect.left}px`;
             draggedCard.style.top = `${targetRect.top - containerRect.top}px`;
+
+            // Display "You are correct !!" message
+            showCorrectBanner();
           }
           draggedCard = null;
         }
